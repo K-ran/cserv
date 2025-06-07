@@ -14,6 +14,6 @@
  * @param port Port number to listen on
  * @return 0 on success, negative value on error
  */
-static int init(int port);
-
+int cserve_init(int port, const char *directory);
+int cserve_start();
 #endif

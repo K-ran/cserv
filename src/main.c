@@ -1,12 +1,9 @@
+#include "config.h"
+#include "cserve.h"
 #include "error.h"
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
-
-// defines
-#define DEFAULT_PORT 80
-#define MAX_ARGS_SIZE 20
-#define MAX_DIR_PATH_SIZE 1024
+#include <string.h>
 
 // globals
 static int port = DEFAULT_PORT;
@@ -65,7 +62,7 @@ void print_help() {
  * @param argv Array of arguments
  */
 int arg_parse(int argc, char *argv[]) {
-    
+
     // Check if there are any arguments
     if (argc == 1) {
         print_help();
@@ -73,7 +70,7 @@ int arg_parse(int argc, char *argv[]) {
     }
 
     // Check if any argument is invalid
-    for (int i = 1; i < argc; i+=2) {
+    for (int i = 1; i < argc; i += 2) {
         if (check_arg_validity(argv[i]) == FAILURE) {
             printf("Error: Invalid argument: %s\n", argv[i]);
             print_help();
@@ -116,7 +113,12 @@ int main(int argc, char *argv[]) {
     if (arg_parse(argc, argv) == FAILURE) {
         return FAILURE;
     }
-    printf("Running server on port %d\n", port);
-    printf("Root directory %s\n", directory);
+    if (cserve_init(port, directory) == FAILURE) {
+        return FAILURE;
+    }
+    if (cserve_start() == FAILURE) {
+        return FAILURE;
+    }
+    // we should never reach here if everything is working correctly
     return SUCCESS;
 }

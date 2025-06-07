@@ -23,13 +23,24 @@ SRCDIR = src
 # output dir
 OUTDIR = bin
 
-all: $(APP)
+# Source files and object files
+SRCS = $(wildcard $(SRCDIR)/*.c)
+OBJS = $(SRCS:$(SRCDIR)/%.c=$(OUTDIR)/%.o)
 
-$(APP): $(SRCDIR)/main.c
-	$(CC) $(CFLAGS) -o $(OUTDIR)/$(APP) -I$(INCDIR) $(SRCDIR)/main.c
+# Create bin directory if it doesn't exist
+$(shell mkdir -p $(OUTDIR))
 
+# Main target
+$(APP): $(OBJS)
+	$(CC) $(CFLAGS) -o $(OUTDIR)/$(APP) $^
+
+# Pattern rule for object files
+$(OUTDIR)/%.o: $(SRCDIR)/%.c
+	$(CC) $(CFLAGS) -I$(INCDIR) -c $< -o $@
+
+# Clean target should remove object files too
 clean:
-	rm -rf $(OUTDIR)/$(APP)
+	rm -rf $(OUTDIR)/*.o $(OUTDIR)/$(APP)
 
 style-check:
 	clang-format -style=file -n $(SRCDIR)/*.c $(INCDIR)/*.h
