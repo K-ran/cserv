@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 // globals
 static int port = DEFAULT_PORT;
@@ -55,6 +56,13 @@ void print_help() {
     }
 }
 
+int check_if_directory_exists(char *directory) {
+    if (access(directory, F_OK) == -1) {
+        return FAILURE;
+    }
+    return SUCCESS;
+}
+
 /**
  * @brief Parse the command line arguments
  *
@@ -101,7 +109,31 @@ int arg_parse(int argc, char *argv[]) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], valid_args[2].short_flag) == 0 ||
             strcmp(argv[i], valid_args[2].long_flag) == 0) {
-            strncpy(directory, argv[i + 1], MAX_DIR_PATH_SIZE);
+            snprintf(directory, MAX_DIR_PATH_SIZE, "%s", argv[i + 1]);
+
+            // convert to absolute path if relative
+            if (directory[0] != '/') {
+                char cwd[MAX_DIR_PATH_SIZE];
+                char temp_path[MAX_DIR_PATH_SIZE * 2];
+                if (getcwd(cwd, sizeof(cwd)) != NULL) {
+                    snprintf(temp_path, sizeof(temp_path), "%s/%s", cwd, directory);
+
+// Temporarily disable format-truncation warning, I know what I am doing, we check the path later on
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+                    snprintf(directory, MAX_DIR_PATH_SIZE, "%s", temp_path);
+#pragma GCC diagnostic pop
+                } else {
+                    printf("Error: Could not get current working directory\n");
+                    print_help();
+                    return FAILURE;
+                }
+                if (check_if_directory_exists(directory) == FAILURE) {
+                    printf("Error: Directory does not exist: %s\n", directory);
+                    print_help();
+                    return FAILURE;
+                }
+            }
             break;
         }
     }

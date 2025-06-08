@@ -14,6 +14,11 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include "cserve_net.h"
+
+// defines
+#define MAX_BUFFER_SIZE (8 * _KBYTE)
+#define CONNECTION_BACKLOG 64
 
 // globals
 int PORT;
@@ -29,7 +34,8 @@ char DIRECTORY[MAX_DIR_PATH_SIZE];
 int cserve_init(int port, const char *directory) {
     // Initialize the server
     PORT = port;
-    strncpy(DIRECTORY, directory, MAX_DIR_PATH_SIZE);
+    // Use snprintf which guarantees null termination
+    snprintf(DIRECTORY, MAX_DIR_PATH_SIZE, "%s", directory);
     return SUCCESS;
 }
 
@@ -55,7 +61,7 @@ int cserve_start() {
 
     // Buffer to store incoming HTTP requests from clients
     // We don't parse the request in this simple server, but we need to read it
-    char buffer[1024] = {0};
+    char buffer[MAX_BUFFER_SIZE] = {0};
 
     // Complete HTTP response that we'll send to every client
     // HTTP/1.1 200 OK = HTTP version 1.1, status code 200 (success)
@@ -133,10 +139,9 @@ int cserve_start() {
 
     // STEP 5: Start listening for incoming connections
     // listen() marks the socket as passive (ready to accept connections)
-    // 3 = backlog size (maximum number of pending connections in the queue)
-    //   If more than 3 clients try to connect simultaneously, additional ones will be rejected
+    // CONNECTION_BACKLOG = maximum number of pending connections in the queue
     //   This is different from the maximum number of concurrent connections
-    if (listen(server_fd, 3) < 0) {
+    if (listen(server_fd, CONNECTION_BACKLOG) < 0) {
         perror("listen");
         close(server_fd);
         return FAILURE;
@@ -165,16 +170,28 @@ int cserve_start() {
         // read() reads data from the socket into our buffer
         // We don't actually parse the HTTP request in this simple server
         // But we need to read it to clear the socket buffer
-        // 1024 = maximum number of bytes to read
-        read(new_socket, buffer, 1024);
+        int rv = read(new_socket, buffer, MAX_BUFFER_SIZE);
+        if (rv < 0) {
+            perror("Socket buffer read failed");
+            close(new_socket);
+            continue;
+        }
         printf("Request received\n");
+
+        cserver_http_req_t *req = parse_http_request(buffer);
+        if (req == NULL) {
+            printf("Error: Failed to parse request\n");
+            close(new_socket);
+            continue;
+        }
+        print_http_request(req);
+        free(req);
 
         // STEP 8: Send our HTTP response back to the client
         // send() writes data to the socket
         // strlen(http_response) = number of bytes to send
         // 0 = flags (no special options)
         send(new_socket, http_response, strlen(http_response), 0);
-        printf("Response sent\n");
 
         // STEP 9: Close the connection with this client
         // close() closes the socket file descriptor
