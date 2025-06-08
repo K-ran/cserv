@@ -7,6 +7,8 @@
  */
 #include "cserve.h"
 #include "config.h"
+#include "cserve_get_handler.h"
+#include "cserve_net.h"
 #include "error.h"
 #include <netinet/in.h>
 #include <stdio.h>
@@ -14,7 +16,6 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include "cserve_net.h"
 
 // defines
 #define MAX_BUFFER_SIZE (8 * _KBYTE)
@@ -37,6 +38,24 @@ int cserve_init(int port, const char *directory) {
     // Use snprintf which guarantees null termination
     snprintf(DIRECTORY, MAX_DIR_PATH_SIZE, "%s", directory);
     return SUCCESS;
+}
+
+/**
+ * @brief Handle an HTTP request
+ *
+ * @param req The request to handle
+ * @return cserver_http_res_t* The response
+ */
+cserver_http_res_t *cserve_handle_request(cserver_http_req_t *req) {
+    // Handle the request
+    cserver_http_method_t method = method_str_to_enum(req->method);
+    switch (method) {
+    case HTTP_METHOD_GET:
+        return cserve_get_handler(req, DIRECTORY);
+    default:
+        return create_http_response(HTTP_STATUS_METHOD_NOT_ALLOWED, "text/plain",
+                                    "Method Not Allowed");
+    }
 }
 
 /**
@@ -64,26 +83,7 @@ int cserve_start() {
     char buffer[MAX_BUFFER_SIZE] = {0};
 
     // Complete HTTP response that we'll send to every client
-    // HTTP/1.1 200 OK = HTTP version 1.1, status code 200 (success)
-    // Content-Type: text/html = tells browser this is HTML content
-    // Connection: close = close connection after sending response
-    // \r\n = carriage return + line feed (HTTP line endings)
-    // Empty line (\r\n\r\n) separates headers from body
-    const char *http_response =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/html\r\n"
-        "Connection: close\r\n"
-        "\r\n"
-        "<!DOCTYPE html>\n"
-        "<html>\n"
-        "<head><title>Karan's Website</title></head>\n"
-        "<body>\n"
-        "<h1>What's up! This is Karan's website, currently in progress.</h1>\n"
-        "</body>\n"
-        "</html>\n";
-
-    printf("Starting server on port %d\n", PORT);
-    printf("Serving directory %s\n", DIRECTORY);
+    char *http_response;
 
     // STEP 1: Create a socket
     // socket() creates an endpoint for communication and returns a file descriptor
@@ -185,13 +185,33 @@ int cserve_start() {
             continue;
         }
         print_http_request(req);
-        free(req);
+
+        cserver_http_res_t *res = cserve_handle_request(req);
+        if (res == NULL) {
+            printf("Error: Failed to handle request\n");
+            close(new_socket);
+            continue;
+        }
+
+        http_response = http_response_to_string(res);
+        printf("Response created\n");
+
+        if (http_response == NULL) {
+            printf("Error: Failed to convert response to string\n");
+            close(new_socket);
+            free_http_response(res);
+            free(req);
+            continue;
+        }
 
         // STEP 8: Send our HTTP response back to the client
         // send() writes data to the socket
         // strlen(http_response) = number of bytes to send
         // 0 = flags (no special options)
         send(new_socket, http_response, strlen(http_response), 0);
+        free(http_response);
+        free_http_response(res);
+        free(req);
 
         // STEP 9: Close the connection with this client
         // close() closes the socket file descriptor
